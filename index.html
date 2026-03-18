@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Advanced GeoJSON Viewer</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    html, body { margin: 0; height: 100%; width: 100%; }
+    #map { height: 100vh; width: 100vw; }
+
+    /* Overlay text (NOT blocking map) */
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+
+      background: rgba(255,255,255,0.8);
+      padding: 12px 20px;
+      border-radius: 8px;
+
+      font-size: 16px;
+      font-family: Arial;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<!-- Text overlay -->
+<div id="loading">
+  Loading map data... Please wait
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+let map;
+let geoLayer;
+
+// Loader control
+function hideLoader() {
+  document.getElementById("loading").style.display = "none";
+}
+
+// Extract gist id
+function getGistId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("gist");
+}
+
+// Fetch GeoJSON URL
+async function loadGeoJsonRawUrl(gistId) {
+  const res = await fetch(`https://api.github.com/gists/${gistId}`);
+  const gist = await res.json();
+
+  const geoFile = Object.values(gist.files)
+    .find(f => f.filename.endsWith(".geojson"));
+
+  if (!geoFile) throw new Error("No .geojson found");
+  return geoFile.raw_url;
+}
+
+// Initialize map
+async function initMap() {
+
+  const gistId = getGistId();
+  if (!gistId) {
+    alert("Use ?gist=YOUR_GIST_ID");
+    return;
+  }
+
+  // --- Base Layers ---
+  const osm = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+  );
+
+  const satellite = L.tileLayer(
+    'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    { maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'] }
+  );
+
+  const hybrid = L.tileLayer(
+    'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    { maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'] }
+  );
+
+  const terrain = L.tileLayer(
+    'https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+    { maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'] }
+  );
+
+  // Create map (shows immediately)
+  map = L.map("map", {
+    center: [20, 0],
+    zoom: 2,
+    layers: [osm]
+  });
+
+  const baseMaps = {
+    "Road Map": osm,
+    "Satellite": satellite,
+    "Hybrid": hybrid,
+    "Terrain": terrain
+  };
+
+  L.control.layers(baseMaps).addTo(map);
+
+  try {
+    const rawUrl = await loadGeoJsonRawUrl(gistId);
+    const geojson = await fetch(rawUrl).then(r => r.json());
+
+    if (geoLayer) map.removeLayer(geoLayer);
+
+    geoLayer = L.geoJSON(geojson, {
+      style: () => ({
+        color: "#3388ff",
+        weight: 2,
+        fillOpacity: 0.3
+      }),
+      pointToLayer: (feature, latlng) =>
+        L.circleMarker(latlng, {
+          radius: 4,
+          fillColor: "#ff7800",
+          color: "#000",
+          weight: 1,
+          fillOpacity: 0.8
+        })
+    }).addTo(map);
+
+    map.fitBounds(geoLayer.getBounds());
+
+    hideLoader(); // remove text after load
+
+  } catch (err) {
+    hideLoader();
+    alert("Error: " + err.message);
+  }
+}
+
+window.onload = initMap;
+</script>
+
+</body>
+</html>
