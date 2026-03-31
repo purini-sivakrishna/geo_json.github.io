@@ -14,7 +14,6 @@
     html, body { margin: 0; height: 100%; width: 100%; }
     #map { height: 100vh; width: 100vw; }
 
-    /* Overlay text (NOT blocking map) */
     #loading {
       position: absolute;
       top: 50%;
@@ -37,7 +36,6 @@
 
 <div id="map"></div>
 
-<!-- Text overlay -->
 <div id="loading">
   Loading map data... Please wait
 </div>
@@ -48,30 +46,36 @@
 let map;
 let geoLayer;
 
-// Loader control
 function hideLoader() {
   document.getElementById("loading").style.display = "none";
 }
 
-// Extract gist id
 function getGistId() {
   const params = new URLSearchParams(window.location.search);
   return params.get("gist");
 }
 
-// Fetch GeoJSON URL
+// FIXED FUNCTION (only change)
 async function loadGeoJsonRawUrl(gistId) {
   const res = await fetch(`https://api.github.com/gists/${gistId}`);
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch gist");
+  }
+
   const gist = await res.json();
 
   const geoFile = Object.values(gist.files)
-    .find(f => f.filename.endsWith(".geojson"));
+    .find(f => 
+      f.filename.toLowerCase().endsWith(".geojson") ||
+      f.filename.toLowerCase().endsWith(".json")
+    );
 
-  if (!geoFile) throw new Error("No .geojson found");
+  if (!geoFile) throw new Error("No GeoJSON file found");
+
   return geoFile.raw_url;
 }
 
-// Initialize map
 async function initMap() {
 
   const gistId = getGistId();
@@ -80,7 +84,6 @@ async function initMap() {
     return;
   }
 
-  // --- Base Layers ---
   const osm = L.tileLayer(
     'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
   );
@@ -100,7 +103,6 @@ async function initMap() {
     { maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'] }
   );
 
-  // Create map (shows immediately)
   map = L.map("map", {
     center: [20, 0],
     zoom: 2,
@@ -118,6 +120,8 @@ async function initMap() {
 
   try {
     const rawUrl = await loadGeoJsonRawUrl(gistId);
+    console.log("Raw URL:", rawUrl); // debug
+
     const geojson = await fetch(rawUrl).then(r => r.json());
 
     if (geoLayer) map.removeLayer(geoLayer);
@@ -140,9 +144,10 @@ async function initMap() {
 
     map.fitBounds(geoLayer.getBounds());
 
-    hideLoader(); // remove text after load
+    hideLoader();
 
   } catch (err) {
+    console.error(err);
     hideLoader();
     alert("Error: " + err.message);
   }
